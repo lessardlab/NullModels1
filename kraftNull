@@ -1,0 +1,44 @@
+#################################################################
+####################################################
+## START FUNCTION
+#################################################################
+####################################################
+​
+#https://science.sciencemag.org/content/suppl/2011/09/21/333.6050.1755.DC1
+​
+ses.beta.function=function(gdata, Nsim=999) # 'gdata' is the data file, 'Nsim' 
+  #is the number of randomizations for calculating expected/null beta
+{
+  plot.gamma=length(unique(gdata$species)) #calculate the total number of species at the site
+  plot.species=tapply(gdata$species,gdata$plot,unique) #generate species list for each plot
+  obs.mean.alpha=mean(sapply(plot.species,length)) #calculate average number of species per plot
+  obs.beta=1-obs.mean.alpha/plot.gamma #calculate observed beta partition
+  rand.mean.alpha=vector(length=Nsim) #create empty vector to be filled in with randomly generated alpha values
+  for(j in 1:Nsim) #start loop for simulations
+  {
+    samp=sample(gdata$plot,length(gdata$plot),replace=F) 
+    #swaps order of plotnames
+    swap.data=data.frame("plot"=samp,"species"=gdata$species)
+    #assigns random plotnames to individuals
+    rand.plot.species=tapply(swap.data$species,swap.data$plot,unique) 
+    #generate species list for each plot
+    rand.mean.alpha[j]=mean(sapply(rand.plot.species,length))
+    #calculate average number of species per plot
+  } #end loop for simulations
+  null.plot.beta=1-rand.mean.alpha/plot.gamma #calculates the 1000 random beta values
+  mean.null.beta=mean(null.plot.beta) #calculates the mean of the random beta values
+  sd.null.beta=sd(null.plot.beta) #calculates the sd of the random beta values
+  ses.beta=(obs.beta-mean.null.beta)/sd.null.beta #calculates thedeviation of the observed from expected (random) beta
+  return(c("gamma"=plot.gamma,"obs.mean.alpha"=obs.mean.alpha,
+           "obs.beta"=obs.beta,"mean.null.beta"=mean.null.beta,"sd.null.beta"=sd.null.beta,
+           "ses.beta"=ses.beta))
+}
+#################################################################
+####################################################
+## END FUNCTION
+#################################################################
+####################################################
+​
+gdata = read.csv("sample_data.csv")
+colnames(gdata) = c("plot","species")
+ses.beta.function(gdata=gdata,Nsim=10)
