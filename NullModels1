@@ -1,0 +1,331 @@
+###### NULL MODELS IN ECOLOGY ###########
+### Practical live-coding session
+## Gabriel Muñoz 
+# Lessard-Lab,@Concordia University
+# July 2020
+
+
+#### 1) What is a null model? 
+
+# a)   Tools to investigate the origins of a pattern.
+
+# Inference of process from pattern, given the absence of (any) mechanism
+
+## Heavily used in Ecological sciences (relies on observation). 
+## Does the observed pattern arises from chance only? 
+
+
+## Example, the sum of 2 dices converges to 7. 
+hist(replicate(1000,sample(1:6, 1) + sample(1:6, 1)))
+
+## Exercise 1: Simulating neutral process in Ecology
+# In neutral process, species are equivalent. Differences between communities arises from stochastic processes 
+
+# define a pool of 100 species, with uniform abundance distribution (i.e. all species are equally abundant)
+pool <- paste0("sp", 1:100)
+
+# define 2 identical communities from the pool (with equal relative abundances)
+
+com1 <- rep(paste0("sp", 1:10),10)
+com2 <- rep(paste0("sp", 1:10),10)
+
+
+# define a simplistic function to simulate neutral community dynamics, based on reproduction, death, and inmigration rates 
+### "function(input(s)){operation, result(output)}"
+#' @param com: local community
+#' @param pool: regional pool
+#' @param Nrep: Number of generation events
+
+neutSim <- function(com, pool,Nrep){
+  # start a loop, simulating each generation
+  for(i in 1:Nrep){
+    # random kill
+    com <- com[-sample(1:length(com),1)]
+    # define a probability outcome
+    prob <- sample(1:0,1) == 1
+    # based on the probability select new species from the community or the pool (50:50 chance) 
+    ifelse(prob,
+           com <-c(com, com[sample(1:length(com),1)]),
+           com <-c(com, pool[sample(1:length(pool),1)]))
+    i+1 # go to the next generation
+  } # end loop
+  
+  return(table(com)) # return the local community as a frequency table. 
+  
+}
+
+## We have defined the function, let's apply to the local communities
+# a) How does the composition of species change only by neutral dynamics? 
+# b) Does species composition converges after independent neutral events? 
+
+
+com1a <- neutSim(com1, pool, 100)
+com2a <- neutSim(com2, pool,100)
+
+## lets examine the differences in species composition and relative abundances 
+table("com" = com1)
+com1a
+com2a
+
+## Where are the differences? 
+
+## 1) How dissimilar they are? 
+
+# merge all communities in a single data.frame
+allCom <- reshape2::melt(
+  list("1a"=data.frame(com1a),
+      "2a" = data.frame(com2a),
+      "com1" =data.frame(
+        table("com" = com1)))
+  )
+
+# recreate site-species matrix
+comDis <- xtabs(value~L1+com, allCom)
+
+## applying jaccard measure of dissimilarity
+vegan::vegdist(comDis, "jaccard")
+vegan::vegdist(comDis, "bray")
+
+## How they compare in richness? 
+
+boxplot(length(unique(names(com1a))),
+        length(unique(names(com2a))),
+        length(unique(com1)),
+        ylab = "richness")
+
+### Does the model converges to particular levels of dissimilarity? 
+
+# lets code a function to iterate the null model at distinct levels of generation times, from 10 to 1000 generations, and plot the results in richness and dissimilarity
+genTimes <- seq(10,1000, 100)
+
+testSimul <- function(genTimes, com, pool){
+  
+  # lapply = list apply ... see `?lapply` for details
+  mulGenSim <- lapply(genTimes, function(x) neutSim(com, pool, x))
+  names(mulGenSim) <- genTimes
+  # from long to wide format
+  mulGenSim <- reshape2::melt(mulGenSim)
+  names(mulGenSim) <- c("sp", "ab", "genTime")
+  # bind the original communitiy
+  
+  com <- data.frame(table(com), rep(1,10))
+  colnames(com) <- c("sp", "ab", "genTime")
+  mulGenSim <- rbind(com, mulGenSim)
+  mulGenSim <- xtabs(ab~sp+genTime, mulGenSim)
+  
+  # How does the richness changes with increasing generational times? 
+  richInc <- apply(mulGenSim, 2, function(x) sum(x>0))
+  plotRich <- plot(richInc~c(1,genTimes), type = "l",
+                   ylab = "Species richness", xlab = "Generation time")
+  
+  # How does the composition changes with increasing generational times? 
+  distNeut <- vegdist(t(mulGenSim), "bray")
+  plotDiss <- plot(as.matrix(distNeut)[1,]~c(1,genTimes), 
+                   type = "l", xlab = "Generation times", ylab = "Dissimilarity")
+  
+}
+
+par(mfrow = c(1,2))
+testSimul(genTimes, com1, pool)
+
+## - What is the most appropiate null model?
+
+## Not all null models are the same, they are targeted build. 
+## Not all Neutral are the same, different stochastic process have different outcomes 
+
+# example, the outcome of a 12 headed dice, vs 2 dice
+
+par(mfrow = c(1,2))
+hist(replicate(1000,sample(1:12,1)), xlab = "Outcome", main = "12 sided dice")
+hist(replicate(1000,sample(1:6,1)+sample(1:6,1)), xlab = "Outcome", main = "sum of 2 dices")
+dev.off()
+
+
+## What will happen if we modify our neutral simulation to change the way we select species from the species pool?
+# hint, look and compare the prob argument within the function: 
+
+neutSim2 <- function(com, pool,Nrep){
+  
+  for(i in 1:Nrep){
+    com <- com[-sample(1:length(com),1)]
+    prob <- sample(1:6, 1) + sample(1:6, 1) # selecting species based on the sum of 2 dices
+    ifelse( prob %in% c(6,7,8),
+           com <-c(com, com[sample(1:length(com),1)]),
+           com <-c(com, pool[sample(1:length(pool),1)]))
+    i+1
+  }
+  
+  return(table(com))
+  
+}
+
+## lets modify our testSimul function so it accepts this new neutSim2 function
+
+testSimul2 <- function(genTimes, com, pool){
+  
+  # lapply = list apply ... see `?lapply` for details
+  mulGenSim <- lapply(genTimes, function(x) neutSim2(com, pool, x))
+  names(mulGenSim) <- genTimes
+  # from long to wide format
+  mulGenSim <- reshape2::melt(mulGenSim)
+  names(mulGenSim) <- c("sp", "ab", "genTime")
+  # bind the original communitiy
+  
+  com <- data.frame(table(com), rep(1,10))
+  colnames(com) <- c("sp", "ab", "genTime")
+  mulGenSim <- rbind(com, mulGenSim)
+  mulGenSim <- xtabs(ab~sp+genTime, mulGenSim)
+  
+  # How does the richness changes with increasing generational times? 
+  richInc <- apply(mulGenSim, 2, function(x) sum(x>0))
+  plotRich <- plot(richInc~c(1,genTimes), type = "l",
+                   ylab = "Species richness", xlab = "Generation time")
+  
+  # How does the composition changes with increasing generational times? 
+  distNeut <- vegdist(t(mulGenSim), "bray")
+  plotDiss <- plot(as.matrix(distNeut)[1,]~c(1,genTimes), 
+                   type = "l", xlab = "Generation times", ylab = "Dissimilarity")
+  
+}
+
+## lets compare the results between testSimul and testSimul2 
+
+par(mfrow = c(2,2))
+testSimul(genTimes, com1, pool)
+testSimul2(genTimes, com1, pool)
+
+
+### both eventually reach to similar equilibrium levels in richness and dissimilarity in relation to the original community. However, the rate at what they do so differs.
+# Therefore, we must also consider the replication levels (generation times) on top of the null model choice when comparing results among null models. 
+
+#### Generative vs randomized-based null models 
+# With the previous example on neutral dynamics, we covered the coding and building of a certain type of null models, 
+# the generative null models (because we generate a pattern, based on a given mechanism) 
+
+# A second type of null models are typically used in Ecology, the randomized-based. 
+# Here the objective is to explore the likelihood of observing a pattern given the conditions of a system. 
+# E.g. given the pattern of species relative abundances or site relative sp richness, how likely are species to co-exist?
+#
+
+## To know more about this sort of null models and the origin of this problem read 
+# Jared Diamond, Simberloff + Chase debates
+
+## Does competition explains co-occurrence patterns? 
+
+# let's build a simple null model to explore the likelihood of a co-occurrence pattern in a know ecological dataset
+library(vegan)
+# call the data on mite abundances
+data(mite)
+
+# build a p/a matrix
+mite[mite>1] <- 1
+
+## lets compute the observed score of co-occurrence for species in this communitiy. 
+## C.score is a measure of the checkerboard pattern of species co-occurrences among sites, more checkerboard = less co-occurrence
+obs <- vegan::nestedchecker(mite)$C.score
+
+
+## Given few restrictions on matrix structure, how likely are we to observe the same pattern of checkerboardiness?
+## lets create a null model where we randomize the occurrence of species to a given site, but we keep the total site richness. 
+# The probability of a species to change sites is relative to the distribution of species among sites.(i.e. more distributed, more likely to be swapped)
+# More null models with different constrains are available!!! revise them on ?comsim or on ecological literature
+null <- simulate(vegan::nullmodel(mite, "r1"),100) # the r1 null-model is the one we will use now, 100 matrix permutations
+nulldis <- sapply(1:100, function(x) vegan::nestedchecker(null[,,x])$C.score) # lets calculate the C.score for all replicates of the matrix
+
+dev.off()
+hist(nulldis, xlim = c(0,250)) # distribution of C.score values for the matrix permutatins
+abline(v= obs, col = "red") # observed C.score
+
+# We can conclude that the observed score of checkerboard is less that what we would expect from "chance", given the structure of the matrix. 
+# In other words, our communities tend to co-occur more often than we would expect from randomized expectations.
+# How we can quantify this pattern?
+## Sample effect size 
+# we can measure the distance from the null expectations as mean differences, the units of this distances are the standard deviation of the null model. 
+# SES = (obs-null_mean)/(null_sd) (Z-score)
+
+(obs - mean(nulldis))/sd(nulldis)
+# We can attribute that some ecological processes is responsible to increase species co-occurrences (~6 times) than what you would expect from random expectations
+
+########
+# Other use of randomized null models is to remove the species richness effects and to standardize the quantification of an ecological process in the assembly for communities at different sp. richness
+### Removing the effects of richness among sites
+# Exercise, lets create 2 random subsets of the same community
+
+sub1 <- mite[sample(1:length(rownames(mite)), 10),sample(1:length(colnames(mite)), 10)]
+sub2 <- mite[sample(1:length(rownames(mite)), 15),sample(1:length(colnames(mite)), 15)]
+
+
+## let's define a function that computes the Z-score of the C.score using a null model of size = Nrep 
+#' @param mite: community matrix 
+#' @param Nrep: number of randomizations of the null model
+#' @param null: null model to apply (from commsim)
+
+nullRan <- function(mite, Nrep, null){
+  
+  obs <- vegan::nestedchecker(mite)$C.score
+  
+  null <- simulate(vegan::nullmodel(mite, null),Nrep)
+  nulldis <- sapply(1:Nrep, function(x) vegan::nestedchecker(null[,,x])$C.score)
+  
+  ## Sample effect size 
+  
+  Zscore <- (obs - mean(nulldis))/sd(nulldis)
+  return(Zscore)
+}
+
+# apply the function to the subset of mite communities 
+# why they differ?
+barplot(c(nullRan(sub1, 100, "r1"),
+        nullRan(sub2, 100, "r1")))
+
+## Let's standardize so the communities have the same richness = the lowest, 
+# lets apply the null model approach to the community with the highest richness iteratevily, 
+# randomizing the species composing the community each time, and both communities have the same richness levels.
+
+# the replicate function, allows to replicate an expression n times
+# ?replicate
+
+nulDist <- replicate(100,
+                     nullRan(sub2[sample(1:length(rownames(sub2)), 10),
+                                  sample(1:length(rownames(sub2)), 10)],100, "r1"))
+
+###
+
+boxplot(nulldis,nullRan(sub1, 100, "r1") )
+
+# true magnitude of differences
+(nullRan(sub1, 100, "r1") - mean(nulldis))/sd(nulDist)
+
+
+#######
+## Critics and drawbacks 
+
+# b)   Specialized instruments 
+
+## requires knowledge of the system (rules)
+## a-priori objectives 
+
+# c) Difficult to communicate 
+
+### lay out assumptions 
+### communicate the idea of the algorithm 
+
+# d) Prone to errors of implementation 
+
+### Provide data and code 
+### Importance of reproducibility 
+
+## What do we control? type I and type II errors 
+
+#######
+# Important tool, towards a parametric model 
+
+
+### Allow quantification of relative effects
+### Hierarchical models, increasing restrictions levels
+
+
+
+
+
+
