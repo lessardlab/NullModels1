@@ -6,7 +6,7 @@ Live coding session led by [@fgabriel1891] and [@ShaunTurney]
 
 July 2020. 
 
-Questions? open an issue or contact to: 
+Questions? open an [issue](https://github.com/lessardlab/NullModels1/issues/new) or contact to: 
 gabriel.munoz@concordia.ca 
 
 
